@@ -101,3 +101,5 @@ op8 also returns three DLC8 fragments, each starting with seq u16:
 Collect matching node/seq ACK and all fragments in any order. CAN does not include JSON temperature, tilt, configuration or state name. SDK0.4.0 requires the third fragment and times out against older firmware. Ignore unrelated frames.
 
 Example node1/seq42/v0.1/w0/a0.2/soft/reliable: ID18EF0184, data `2A 00 64 00 00 00 14 81`. Set3000ms while disabled: ID18EF018C, data `2B 00 B8 0B 00 00 00 00`.
+
+The NVS namespace and PlatformIO project identifier are `lyo-d42`; the display name is Lyo-D42. If the current namespace is absent, firmware reads legacy settings for upgrade compatibility. All new saves use the current namespace.

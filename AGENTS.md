@@ -19,3 +19,5 @@
 ## Validation
 Windows host tests: python test/run_chassis_tests.py (also --can, --screen), python test/run_robocore_tests.py. UI logic: node test/chassis_ui_test.cjs. Browser tests require Playwright and tools/preview_web.py. Build: pio run.
 Release packaging: python tools/package_release.py; inspect the SHA256 manifest and release validation report. Do not invent licensing for inherited libraries; retain their notices.
+
+Product display name: Lyo-D42. Project/NVS identifier: lyo-d42. Retain the legacy NVS read fallback for upgrades; all new writes use lyo-d42.

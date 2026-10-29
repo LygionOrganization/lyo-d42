@@ -18,9 +18,9 @@ bool LyoD42::good(int result) { return result>0 && driver_.getLastError()==0; }
 void LyoD42::begin() {
   ledcAttach(21,20000,10); ledcWrite(21,0);
   driver_.pSerial=&Serial1; driver_.IOTimeOut=15;
-  // Keep the legacy NVS namespace so a product rename preserves saved settings.
+  // Read current settings first; fall back only for upgrades from the old product name.
   Preferences p;
-  if(p.begin("lylumo",true)) {
+  if(p.begin("lyo-d42",true) || p.begin("lylumo",true)) {
     double m=p.getDouble("max_speed_v2",lyo_d42::maxSpeed),d=p.getDouble("min_duty_v2",0.40);
     if(std::isfinite(m)&&m>=0.01&&m<=lyo_d42::maxSpeed) maxSpeed_=m;
     if(std::isfinite(d)&&d>=0.01&&d<=1) minDuty_=d;
@@ -256,7 +256,7 @@ bool LyoD42::startMotion(uint32_t received) {
   enabled_=true;state_="idle";return true;
 }
 bool LyoD42::save() {
-  Preferences p; if(!p.begin("lylumo",false)) return false;
+  Preferences p; if(!p.begin("lyo-d42",false)) return false;
   bool ok=p.putDouble("max_speed_v2",maxSpeed_)==sizeof(double);
   ok=(p.putDouble("min_duty_v2",minDuty_)==sizeof(double))&&ok;
   ok=(p.putUChar("can_id",canId_)==1)&&ok;

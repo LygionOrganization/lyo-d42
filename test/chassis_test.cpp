@@ -16,7 +16,14 @@ int main(){
  assert(lyo_d42::speedRegister(lyo_d42::rpmToMps(60))==332);
  assert(lyo_d42::lightDuty(0,.7)==0&&lyo_d42::lightDuty(.0001,.7)>=716&&lyo_d42::lightDuty(1,.7)==1023);
  double l=.2,r=.1;lyo_d42::limit(l,r,.1);assert(l==.1&&r==.05);
- LyoD42 c;c.begin();assert(c.ready_&&!c.enabled_&&duty==0);
+ prefsTest::opened.clear();
+ prefsTest::currentMissing=true;
+ LyoD42 legacy;legacy.begin();
+ assert(prefsTest::opened.size()==2 && prefsTest::opened[0]=="lyo-d42" && prefsTest::opened[1]=="lylumo");
+ assert(legacy.save() && prefsTest::opened.back()=="lyo-d42");
+ prefsTest::currentMissing=false;prefsTest::opened.clear();
+ LyoD42 c;c.begin();
+ assert(prefsTest::opened.size()==1 && prefsTest::opened[0]=="lyo-d42");assert(c.ready_&&!c.enabled_&&duty==0);
  JsonDocument telemetry;c.snapshot(telemetry);assert(telemetry["wheels"][0]["temperature_c"]==36 && telemetry["wheels"][1]["temperature_c"]==37);
  assert(command(c,"{\"T\":804,\"v\":0.1,\"w\":0}"));
  command(c,"{\"T\":800}");
