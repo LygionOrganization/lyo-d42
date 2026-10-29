@@ -1,0 +1,21 @@
+[package]
+name = "lyo-d42"
+version = "0.4.0"
+edition = "2021"
+description = "Explicit bounded Lyo-D42 chassis control"
+readme = "README.md"
+license-file = "LICENSE"
+
+[features]
+default = []
+tls = ["ureq/tls"]
+
+[dependencies]
+serde_json = "1"
+serialport = { version = "4", default-features = false }
+ureq = { version = "2.12", default-features = false, features = ["json"] }
+tungstenite = "0.24"
+url = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+socketcan = { version = "3", default-features = false }

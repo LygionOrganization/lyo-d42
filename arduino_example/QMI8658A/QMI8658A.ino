@@ -1,0 +1,138 @@
+// RoboCore S3 standalone QMI-FINAL-1. No RoboCoreSupport dependency.
+// Board Manager: esp32 by Espressif Systems 3.3.0; ESP32S3 Dev Module.
+// USB CDC On Boot = Disabled. Type-C UART / Serial0: 115200 baud.
+// Arduino.h and Wire.h come with the ESP32 board package.
+// No additional Library Manager packages or libraries from lib/ are required.
+#include <Arduino.h>
+#include <Wire.h>
+
+constexpr bool PRINT_IMU = true;  // Disable telemetry when integrating a controller.
+constexpr uint32_t POLL_US = 2000;
+uint8_t imuAddress = 0;
+uint32_t lastCount = 0;
+bool initialized = false;
+
+struct ImuSample {
+  float ax, ay, az;             // g
+  float gx, gy, gz;             // degrees/second
+  float temperature;            // degrees C
+  uint32_t count;               // Sensor's 24-bit sample counter.
+  uint32_t receivedUs;          // Host receipt time, not sensor acquisition time.
+};
+ImuSample sample = {};
+bool readImu(ImuSample& result);
+
+// Repeated START; CTRL1 enables register auto-increment for burst reads.
+bool readRegisters(uint8_t reg, uint8_t* data, size_t length) {
+  Wire.beginTransmission(imuAddress);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(imuAddress, length, true) != length) {
+    while (Wire.available()) Wire.read();
+    return false;
+  }
+  for (size_t i = 0; i < length; ++i) data[i] = uint8_t(Wire.read());
+  return true;
+}
+
+bool writeRegister(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(imuAddress);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission(true) == 0;
+}
+
+bool readCount(uint32_t& count) {
+  uint8_t bytes[3];
+  // Keep the individually addressed counter reads verified on this board.
+  for (uint8_t i = 0; i < 3; ++i)
+    if (!readRegisters(0x30 + i, &bytes[i], 1)) return false;
+  count = uint32_t(bytes[0]) | (uint32_t(bytes[1]) << 8) | (uint32_t(bytes[2]) << 16);
+  return true;
+}
+
+bool beginImu() {
+  for (uint8_t address = 0x6A; address <= 0x6B; ++address) {
+    imuAddress = address;
+    uint8_t who = 0;
+    if (readRegisters(0x00, &who, 1) && who == 0x05) break;
+    imuAddress = 0;
+  }
+  if (!imuAddress || !writeRegister(0x60, 0xB0)) return false;
+  delay(30);
+  uint8_t value;
+  if (!readRegisters(0x4D, &value, 1) || value != 0x80) return false;
+  // Disable sensors; little-endian + auto-increment; FIFO bypass; disable engines;
+  // +/-8 g and +/-512 dps at 112.1 Hz; filters off; enable both sensors.
+  const uint8_t config[][2] = {
+    {0x08, 0x00}, {0x02, 0x40}, {0x14, 0x00}, {0x09, 0x00},
+    {0x03, 0x26}, {0x04, 0x56}, {0x06, 0x00}, {0x08, 0x03}
+  };
+  for (const auto& setting : config) {
+    if (!writeRegister(setting[0], setting[1]) ||
+        !readRegisters(setting[0], &value, 1) || value != setting[1]) return false;
+  }
+  delay(250);  // Sensor startup; no startup delays in the sampling path.
+  return readCount(lastCount);
+}
+
+// One attempt only. False means unchanged, interrupted by an update, or I2C error.
+// On false, result stays unchanged. Never use an old sample as a new control input.
+bool readImu(ImuSample& result) {
+  uint32_t before, after;
+  uint8_t data[14];
+  if (!readCount(before) || before == lastCount) return false;
+  if (!readRegisters(0x33, data, sizeof(data)) || !readCount(after) || before != after)
+    return false;
+  int16_t raw[7];
+  for (uint8_t i = 0; i < 7; ++i)
+    raw[i] = int16_t(uint16_t(data[2 * i]) | (uint16_t(data[2 * i + 1]) << 8));
+  result = {raw[1] / 4096.0f, raw[2] / 4096.0f, raw[3] / 4096.0f,
+            raw[4] / 64.0f, raw[5] / 64.0f, raw[6] / 64.0f,
+            raw[0] / 256.0f, after, micros()};
+  lastCount = after;
+  return true;
+}
+
+void setup() {
+  Serial0.setTxBufferSize(256);
+  Serial0.begin(115200);
+  delay(500);
+  Serial0.println("\nQMI-FINAL-1 | I2C 400kHz | ODR 112.1Hz | UART0 115200");
+  Wire.begin(6, 7);  // SDA, SCL
+  Wire.setClock(400000);
+  Wire.setTimeOut(20);
+  initialized = beginImu();
+  Serial0.println(initialized ? "IMU ready" : "IMU init failed; check board and reset.");
+}
+
+void loop() {
+  static uint32_t lastPollUs = 0, lastPrintMs = 0;
+  static bool haveSample = false;
+  if (!initialized) { delay(10); return; }
+  uint32_t now = micros();
+  if (uint32_t(now - lastPollUs) >= POLL_US) {
+    lastPollUs = now;
+    if (readImu(sample)) {
+      haveSample = true;
+      // Process this NEW sample here: attitude estimation / control update.
+      // For sensor dt, use the 24-bit count delta divided by 112.1 Hz.
+    }
+  }
+  if (PRINT_IMU && uint32_t(millis() - lastPrintMs) >= 200) {
+    lastPrintMs = millis();
+    char line[160];
+    int n;
+    if (!haveSample || uint32_t(micros() - sample.receivedUs) > 100000)
+      n = snprintf(line, sizeof(line), "IMU: no fresh data for 100 ms\n");
+    else
+      n = snprintf(line, sizeof(line),
+        "count=%lu a[g]=%.3f,%.3f,%.3f gyro[dps]=%.3f,%.3f,%.3f T[C]=%.2f\n",
+        (unsigned long)sample.count, sample.ax, sample.ay, sample.az,
+        sample.gx, sample.gy, sample.gz, sample.temperature);
+    // Skip telemetry if UART is busy; do not wait for the line to transmit.
+    if (n > 0 && n < int(sizeof(line)) && Serial0.availableForWrite() >= n)
+      Serial0.write(reinterpret_cast<const uint8_t*>(line), size_t(n));
+  }
+  delay(1);  // Yield to the ESP32 scheduler; telemetry does not set the sample rate.
+}

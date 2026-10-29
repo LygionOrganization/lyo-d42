@@ -1,0 +1,30 @@
+const {chromium}=require('playwright');const assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH});const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[],commands=[];let enabled=false,hold=false,last={};page.on('pageerror',e=>errors.push(e.message));
+await page.route('**/api/chassis',route=>route.fulfill({json:{T:808,ok:true,ready:true,enabled,hill_hold:hold,state:enabled?'idle':'disabled',led:0,max_speed:.32,min_duty:.4,timeout_ms:3000,current:200,can_id:1,sta_rssi:-54,ap_clients:1,wheels:[{valid:true,voltage:20.1,mps:0},{valid:true,voltage:20.1,mps:0}]}}));
+await page.route('**/api/result',route=>route.fulfill({json:last}));
+await page.route('**/api/cmd',route=>{const c=route.request().postDataJSON();commands.push(c);if(c.T===801)enabled=c.enable;if(c.T===804)enabled=c.v!==0||c.w!==0;if(c.T===800){enabled=false;hold=false;}if(c.T===811){hold=c.hold;enabled=hold;}if(c.rid)last={...c,ok:true};return route.fulfill({status:202,json:{accepted:true}});});
+await page.goto('http://127.0.0.1:8765');await page.waitForTimeout(500);assert(await page.locator('#chassis').isVisible());assert.equal(await page.locator('#driveVoltage').textContent(),'20.1 V');
+await page.waitForTimeout(400);await page.keyboard.down('w');await page.waitForTimeout(250);await page.keyboard.up('w');assert(commands.some(c=>c.T===804&&c.v>0));await page.waitForTimeout(200);assert(commands.some(c=>c.T===804&&c.v===0));
+await page.keyboard.press('Space');await page.waitForTimeout(150);assert(commands.some(c=>c.T===800));
+// Optional sensor HTTP failure must not revoke otherwise healthy driving.
+await page.route('**/api/imu',route=>route.fulfill({status:503,body:'IMU unavailable'}));
+await page.waitForTimeout(400);
+const optionalStops=commands.filter(c=>c.T===800).length;
+await page.keyboard.down('w');await page.waitForTimeout(700);await page.keyboard.up('w');
+assert(commands.some(c=>c.T===804&&c.v>0),'missing IMU must allow motion');
+assert.equal(commands.filter(c=>c.T===800).length,optionalStops);
+assert((await page.locator('#driveAttitude').textContent()).includes('unavailable'));
+assert.equal(await page.locator('#driveStop').count(),0);await page.keyboard.press('Space');await page.waitForTimeout(150);
+await page.locator('#driveLight').fill('20');await page.locator('#driveLight').dispatchEvent('input');await page.waitForTimeout(200);assert(commands.some(c=>c.T===807&&c.brightness===.2&&c.reliable));
+await page.waitForTimeout(400);
+const pad=await page.locator('#drivePad').boundingBox();await page.mouse.move(pad.x+pad.width/2,pad.y+pad.height/2);await page.mouse.down();await page.mouse.move(pad.x+pad.width/2,pad.y+20);await page.waitForTimeout(200);await page.mouse.up();
+await page.evaluate(()=>document.activeElement.blur());await page.keyboard.down('w');await page.waitForTimeout(150);const stopsBefore=commands.filter(c=>c.T===800).length;await page.locator('[data-page="can"]').click();await page.waitForTimeout(200);assert(commands.filter(c=>c.T===800).length>stopsBefore,'navigation must disable');
+await page.locator('[data-page="chassis"]').click();await page.waitForTimeout(400);await page.evaluate(()=>document.activeElement.blur());await page.keyboard.down('w');await page.waitForTimeout(150);await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.waitForTimeout(150);assert(!enabled,'blur must disable');
+await page.keyboard.up('w');await page.locator('#driveHold').check();await page.waitForTimeout(400);
+assert(hold&&commands.some(c=>c.T===811&&c.hold),'hill hold switch');
+await page.locator('#driveHold').uncheck();await page.waitForTimeout(400);assert(!hold);
+await page.screenshot({path:'.pio/lyo_d42-desktop.png',fullPage:true});
+await page.locator('[data-page="can"]').click();await page.locator('#canSend button').click();await page.waitForTimeout(350);assert(commands.some(c=>c.T===501&&c.id===0x123));
+await page.setViewportSize({width:390,height:844});for(const id of ['chassis','can','json','devices','settings']){await page.locator(`[data-page="${id}"]`).click();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),id+' horizontal overflow');}
+await page.locator('[data-page="chassis"]').click();await page.screenshot({path:'.pio/lyo_d42-mobile.png',fullPage:true});
+assert.deepEqual(errors,[]);await browser.close();console.log('PASS Lyo-D42 default page, telemetry, keyboard/deadman, LED, CAN TX and mobile widths');})().catch(e=>{console.error(e);process.exit(1)});

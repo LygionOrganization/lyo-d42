@@ -1,0 +1,13 @@
+.pio/
+.upstream/
+__pycache__/
+*.pyc
+node_modules/
+.env*
+
+sdk/rust/target/
+*.egg-info/
+.venv/
+dist/
+
+sdk/python/build/

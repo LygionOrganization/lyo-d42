@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lyo-d42"
+version = "0.4.0"
+description = "Lyo-D42 chassis control over serial, HTTP, WebSocket and CAN"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {file = "LICENSE"}
+
+[project.optional-dependencies]
+serial = ["pyserial>=3.5,<4"]
+websocket = ["websocket-client>=1.8,<2"]
+can = ["python-can>=4.4,<5"]
+all = ["pyserial>=3.5,<4", "websocket-client>=1.8,<2", "python-can>=4.4,<5"]
+
+[tool.setuptools.packages.find]
+include = ["lyo_d42*"]
