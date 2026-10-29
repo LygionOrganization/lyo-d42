@@ -70,7 +70,7 @@ Retain individual library notices from the matching source distribution.
     for lang in ("python", "rust"):
         base = ROOT / "sdk" / lang
         artifacts[lang + "-sdk"] = archive(lang + "-sdk", sources(base), base, f"Lyo-D42-{lang}-sdk/")
-    paths = [ROOT / p for p in ("README.md", "AGENTS.md", "LICENSE", "LICENSE-AGPL", "platformio.ini", ".gitignore")]
+    paths = [ROOT / p for p in ("README.md", "README.zh-CN.md", "AGENTS.md", "LICENSE", "LICENSE-AGPL", "platformio.ini", ".gitignore")]
     for folder in ("src", "include", "lib", "web", "sdk", "test", "tools", "docs", "python_example", "arduino_example"):
         paths.extend(sources(ROOT / folder))
     artifacts["source"] = archive("source", paths, ROOT, "Lyo-D42/")
